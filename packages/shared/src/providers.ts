@@ -9,6 +9,8 @@ export type MailboxCredentials = {
   imapSecure: boolean;
   imapUsername: string;
   imapPassword: string;
+  /** XOAUTH2 access token for Gmail/Outlook mailboxes; takes precedence over passwords. */
+  oauthAccessToken?: string;
 };
 
 export interface OutboundMailProvider {

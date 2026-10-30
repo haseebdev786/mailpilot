@@ -190,3 +190,41 @@ test("quoted unsubscribe footers do not turn interested replies into opt-outs", 
   assert.equal((await analyzeReply({ text: reply })).classification, "INTERESTED");
   assert.equal((await analyzeReply({ text: "Can you explain this?\n> Unsubscribe: https://example.test" })).classification, "ASKING_DETAILS");
 });
+
+test("auth tokens hash without storing the raw token", async () => {
+  const { createTokenPair, hashAuthToken } = await import("../packages/shared/src/token-pairs.ts");
+  const pair = createTokenPair();
+  assert.equal(hashAuthToken(pair.token), pair.tokenHash);
+  assert.notEqual(createTokenPair().tokenHash, pair.tokenHash);
+});
+
+test("Stripe webhook signatures verify only fresh, correctly signed payloads", async () => {
+  const crypto = await import("node:crypto");
+  const { verifyStripeWebhookSignature } = await import("../packages/shared/src/billing-plans.ts");
+  const secret = "whsec-test-only";
+  const body = JSON.stringify({ type: "checkout.session.completed" });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
+  assert.equal(verifyStripeWebhookSignature(body, `t=${timestamp},v1=${signature}`, secret), true);
+  assert.equal(verifyStripeWebhookSignature(body, `t=${timestamp},v1=deadbeef`, secret), false);
+  assert.equal(verifyStripeWebhookSignature(body, `t=${timestamp - 1000},v1=${signature}`, secret), false);
+  assert.equal(verifyStripeWebhookSignature(body, null, secret), false);
+});
+
+test("plan tiers increase in every limit", async () => {
+  const { PLAN_DEFAULTS } = await import("../packages/shared/src/billing-plans.ts");
+  assert.ok(PLAN_DEFAULTS.free.monthlySendLimit < PLAN_DEFAULTS.pro.monthlySendLimit);
+  assert.ok(PLAN_DEFAULTS.pro.monthlySendLimit < PLAN_DEFAULTS.scale.monthlySendLimit);
+  assert.ok(PLAN_DEFAULTS.free.maxMailboxes < PLAN_DEFAULTS.pro.maxMailboxes);
+  assert.ok(PLAN_DEFAULTS.free.monthlyAiCalls < PLAN_DEFAULTS.pro.monthlyAiCalls);
+});
+
+test("rate limiting allows up to the limit, then blocks, even without Redis", async () => {
+  const { checkRateLimit } = await import("../packages/shared/src/rate-limit.ts");
+  const key = `test-${Date.now()}-${Math.random()}`;
+  assert.equal((await checkRateLimit(key, 2, 60)).allowed, true);
+  assert.equal((await checkRateLimit(key, 2, 60)).allowed, true);
+  const third = await checkRateLimit(key, 2, 60);
+  assert.equal(third.allowed, false);
+  assert.equal(third.remaining, 0);
+});

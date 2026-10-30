@@ -114,6 +114,11 @@ enum DealStage {
   LOST
 }
 
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -164,6 +169,7 @@ model User {
   sessions         Session[]
   accounts         Account[]
   ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  authTokens       AuthToken[]
   createdCampaigns Campaign[]        @relation("CampaignCreator")
   createdContacts  Contact[]         @relation("ContactCreator")
   assignedContacts Contact[]         @relation("ContactOwner")
@@ -196,6 +202,7 @@ model Workspace {
   activityLogs    ActivityLog[]
   subscription    Subscription?
   apiKeys         ApiKey[]
+  aiUsages        AiUsage[]
   notifications   Notification[]
 }
 
@@ -258,6 +265,10 @@ model Mailbox {
   imapUsername               String?
   imapPasswordEncrypted      String?
   oauthRefreshTokenEncrypted String?
+  oauthAccessTokenEncrypted String?
+  oauthTokenExpiresAt DateTime?
+  oauthScope        String?
+  imapUidValidity   String?
   fromName                   String?
   signature                  String?
   businessAddress            String?
@@ -645,6 +656,10 @@ model Plan {
   name               String
   description        String?
   monthlyPrice       Int            @default(0)
+  stripePriceIdMonthly String?
+  stripePriceIdYearly String?
+  monthlySendLimit   Int            @default(200)
+  monthlyAiCalls     Int            @default(50)
   maxMailboxes       Int            @default(1)
   maxContacts        Int            @default(1000)
   maxActiveCampaigns Int            @default(1)
@@ -661,11 +676,54 @@ model Subscription {
   interval               BillingInterval    @default(MONTH)
   providerCustomerId     String?
   providerSubscriptionId String?
+  currentPeriodStart     DateTime?
   currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean          @default(false)
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   plan                   Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+}
+
+model AuthToken {
+  id         String        @id @default(cuid())
+  userId     String
+  type       AuthTokenType
+  tokenHash  String        @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, expiresAt])
+}
+
+model AiUsage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  provider    String
+  model       String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model FailedJob {
+  id          String    @id @default(cuid())
+  queue       String    @default("outreach")
+  jobId       String?
+  jobName     String
+  workspaceId String?
+  payload     Json?
+  error       String
+  attempts    Int       @default(0)
+  failedAt    DateTime  @default(now())
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, failedAt])
+  @@index([jobName, failedAt])
 }
 
 model ApiKey {
