@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@mailpilot/shared/db";
 import { getOutreachQueue } from "@mailpilot/shared/queue";
 import { STOP_CONTACT_STATUSES, sendingWindowDelay } from "@mailpilot/shared/sending-policy";
+import { checkActiveCampaignLimit, checkMonthlySendLimit, PlanLimitError } from "@mailpilot/shared/billing";
 import { getCurrentAuth } from "@/lib/auth";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,9 +15,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   });
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   if (campaign.status !== "DRAFT") return NextResponse.json({ error: "Only a draft can be launched. Use Resume for a paused campaign." }, { status: 409 });
-  if (!campaign.mailboxes.length || campaign.mailboxes.some(({ mailbox }) => !mailbox.isActive || mailbox.healthStatus !== "CONNECTED" || !mailbox.smtpPasswordEncrypted)) {
+  if (!campaign.mailboxes.length || campaign.mailboxes.some(({ mailbox }) => !mailbox.isActive || mailbox.healthStatus !== "CONNECTED" || (!mailbox.smtpPasswordEncrypted && !mailbox.oauthRefreshTokenEncrypted))) {
     return NextResponse.json({ error: "Connect and test every selected mailbox before launching." }, { status: 400 });
   }
+  try { await checkActiveCampaignLimit(auth.workspace.id); await checkMonthlySendLimit(auth.workspace.id); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
   const suppressions = await prisma.suppressionList.findMany({ where: { workspaceId: auth.workspace.id }, select: { email: true } });
   const suppressed = new Set(suppressions.map((entry) => entry.email));
   let recipients = campaign.recipients.filter((recipient) => !suppressed.has(recipient.contact.email));

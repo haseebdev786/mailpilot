@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSession, hashPassword, SESSION_COOKIE_NAME, sessionCookieOptions } from "@mailpilot/shared/auth";
+import { createAuthToken, isTransactionalMailConfigured, sendTransactionalEmail, verificationUrl } from "@mailpilot/shared/auth-tokens";
+import { ensurePlans } from "@mailpilot/shared/billing";
+import { checkRateLimit, clientIp } from "@mailpilot/shared/rate-limit";
 import { prisma } from "@mailpilot/shared/db";
 import { logger } from "@mailpilot/shared/logger";
 
@@ -18,22 +21,39 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const email = input.email.toLowerCase();
+    const signupLimit = await checkRateLimit(`signup:${clientIp(request)}`, 20, 3600);
+    if (!signupLimit.allowed) return NextResponse.json({ error: "Too many signups from this network. Try again later." }, { status: 429 });
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return NextResponse.json({ error: "An account with that email already exists." }, { status: 409 });
 
     const passwordHash = await hashPassword(input.password);
+    await ensurePlans();
     const created = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { email, name: input.name, passwordHash } });
       const baseSlug = slugify(`${input.name}-${email.split("@")[0]}`);
       const workspace = await tx.workspace.create({ data: { name: `${input.name}'s workspace`, slug: `${baseSlug}-${user.id.slice(-6)}`, ownerId: user.id } });
       await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" } });
-      const plan = await tx.plan.upsert({ where: { code: "free" }, update: {}, create: { code: "free", name: "Free", description: "A focused starting point for testing outreach", maxMailboxes: 1, maxContacts: 1000, maxActiveCampaigns: 1 } });
+      const plan = await tx.plan.findUniqueOrThrow({ where: { code: "free" } });
       await tx.subscription.create({ data: { workspaceId: workspace.id, planId: plan.id, status: "TRIALING" } });
       return user;
     });
 
+    const verificationToken = await createAuthToken(created.id, "EMAIL_VERIFICATION", 24);
+    const emailSent = await sendTransactionalEmail({
+      to: email,
+      subject: "Verify your MailPilot email",
+      text: `Verify your MailPilot account by opening this link (valid for 24 hours): ${verificationUrl(verificationToken)}`,
+      html: `<p>Verify your MailPilot account by opening this link (valid for 24 hours):</p><p><a href="${verificationUrl(verificationToken)}">Verify email</a></p>`
+    });
+    // EMAIL_VERIFICATION_REQUIRED=true is the public-launch setting: no session
+    // is issued until the address is verified. The default (false) keeps the
+    // existing local/demo behaviour, where verification is offered, not forced.
+    if (process.env.EMAIL_VERIFICATION_REQUIRED === "true") {
+      logger.info("user_signed_up_verification_pending", { userId: created.id });
+      return NextResponse.json({ ok: true, requiresVerification: true, sessionCreated: false, emailSent, transactionalMailConfigured: isTransactionalMailConfigured(), ...(process.env.NODE_ENV !== "production" ? { devToken: verificationToken } : {}) }, { status: 201 });
+    }
     const session = await createSession(created.id);
-    const response = NextResponse.json({ ok: true }, { status: 201 });
+    const response = NextResponse.json({ ok: true, requiresVerification: true, sessionCreated: true, emailSent, transactionalMailConfigured: isTransactionalMailConfigured(), ...(process.env.NODE_ENV !== "production" ? { devToken: verificationToken } : {}) }, { status: 201 });
     response.cookies.set(SESSION_COOKIE_NAME, session.token, sessionCookieOptions(session.expiresAt, request));
     logger.info("user_signed_up", { userId: created.id });
     return response;
