@@ -1,0 +1,15 @@
+{
+  "routes": [
+    { "path": "/", "title": "MailPilot" },
+    { "path": "/login", "title": "Log in" },
+    { "path": "/dashboard", "title": "Dashboard" },
+    { "path": "/campaigns", "title": "Campaign wizard" },
+    { "path": "/contacts", "title": "Contacts and imports" },
+    { "path": "/inbox", "title": "Inbox" },
+    { "path": "/mailboxes", "title": "Mailboxes" },
+    { "path": "/knowledge-base", "title": "Knowledge base" },
+    { "path": "/analytics", "title": "Analytics" },
+    { "path": "/settings", "title": "Settings" }
+    ,{ "path": "/unsubscribe", "title": "Unsubscribe" }
+  ]
+}

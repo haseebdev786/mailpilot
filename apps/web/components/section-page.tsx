@@ -1,0 +1,7 @@
+import type { LucideIcon } from "lucide-react";
+import { ArrowRight, Info } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+
+export function SectionPage({ eyebrow, title, description, icon: Icon, emptyTitle, emptyDescription, action, actionHref = "/dashboard" }: { eyebrow: string; title: string; description: string; icon: LucideIcon; emptyTitle: string; emptyDescription: string; action: string; actionHref?: string }) {
+  return <div className="space-y-8"><div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-muted">{eyebrow}</p><h1 className="text-4xl font-bold tracking-[-0.065em] text-ink">{title}</h1><p className="mt-3 max-w-xl text-sm leading-6 text-muted">{description}</p></div><a href={actionHref} className="inline-flex h-10 items-center gap-2 self-start rounded-xl bg-strong px-4 text-xs font-semibold text-white transition hover:opacity-90 md:self-auto">{action}<ArrowRight size={14} /></a></div><div className="rounded-2xl border border-signal/20 bg-signal/10 px-4 py-3"><div className="flex items-start gap-3"><Info size={16} className="mt-0.5 shrink-0 text-ink" /><p className="text-xs leading-5 text-ink/75">Phase 1 keeps this surface intentionally clear. The foundation is ready for the next data-backed workflow without changing your workspace boundary.</p></div></div><EmptyState icon={Icon} eyebrow={eyebrow} title={emptyTitle} description={emptyDescription} action={action} actionHref={actionHref} /></div>;
+}

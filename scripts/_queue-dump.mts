@@ -1,0 +1,10 @@
+﻿import IORedis from "ioredis";
+import { Queue } from "bullmq";
+const c = new IORedis("redis://localhost:6379", { maxRetriesPerRequest: 2 });
+const q = new Queue("outreach", { connection: c });
+console.log("counts", await q.getJobCounts());
+const jobs = await q.getJobs(["waiting","delayed","active","completed","failed"], 0, 20);
+for (const j of jobs) console.log(j.id, j.name, j.data.contactId, "attempts", j.attemptsMade, "delay", j.opts.delay, "ts", j.timestamp);
+const failed = await q.getFailed();
+for (const j of failed) console.log("FAILED", j.id, j.failedReason);
+await q.close(); c.disconnect();

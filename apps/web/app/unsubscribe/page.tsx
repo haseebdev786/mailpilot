@@ -1,0 +1,3 @@
+import { Suspense } from "react";
+import { UnsubscribeForm } from "@/components/unsubscribe-form";
+export default function UnsubscribePage() { return <main className="flex min-h-screen items-center justify-center bg-canvas p-6 text-ink"><div className="w-full max-w-md rounded-2xl border border-line bg-panel p-8"><p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">MailPilot preferences</p><h1 className="mt-3 text-3xl font-bold">Unsubscribe</h1><Suspense fallback={<p className="mt-6 text-sm text-muted">Loading preferences…</p>}><UnsubscribeForm /></Suspense></div></main>; }

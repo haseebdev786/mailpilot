@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next-production/
+out/
+coverage/
+packages/shared/src/generated/
+.audit-report.json
+.audit-all-report.json
+.env
+.env.*
+!.env.example
+.neon
+.pgdata/
+*.log
+.DS_Store
+.neon

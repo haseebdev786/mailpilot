@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@mailpilot/shared/db";
+import { getCurrentAuth } from "@/lib/auth";
+export async function GET() { const auth = await getCurrentAuth(); if (!auth) return NextResponse.json({ error: "Authentication required" }, { status: 401 }); const notifications = await prisma.notification.findMany({ where: { workspaceId: auth.workspace.id }, orderBy: { createdAt: "desc" }, take: 50 }); return NextResponse.json({ notifications }); }
+export async function POST(request: Request) { const auth = await getCurrentAuth(); if (!auth) return NextResponse.json({ error: "Authentication required" }, { status: 401 }); const body = await request.json() as { id?: string }; if (body.id) await prisma.notification.updateMany({ where: { id: body.id, workspaceId: auth.workspace.id }, data: { readAt: new Date() } }); else await prisma.notification.updateMany({ where: { workspaceId: auth.workspace.id, readAt: null }, data: { readAt: new Date() } }); return NextResponse.json({ ok: true }); }

@@ -1,0 +1,11 @@
+﻿import { PrismaClient } from "@prisma/client";
+const p = new PrismaClient();
+const w = await p.workspace.findMany({ select: { id: true, name: true } });
+const mailboxes = await p.mailbox.findMany({ select: { id: true, workspaceId: true, email: true, smtpHost: true, smtpPort: true, smtpSecure: true, healthStatus: true, isActive: true, fromName: true, businessAddress: true, imapHost: true } });
+const campaigns = await p.campaign.findMany({ select: { id: true, name: true, status: true, dailySendLimit: true, sendingDelayMin: true, sendingDelayMax: true, timezone: true, _count: { select: { recipients: true, mailboxes: true, steps: true } } } });
+const contacts = await p.contact.count();
+const users = await p.user.findMany({ select: { id: true, email: true } });
+const msgs = await p.emailMessage.groupBy({ by: ["status","direction"], _count: true });
+const cc = await p.campaignContact.findMany({ select: { campaignId: true, contactId: true, completedAt: true, lastError: true, currentStep: true } });
+console.log(JSON.stringify({ w, mailboxes, campaigns, contacts, users, msgs, cc }, null, 2));
+await p.$disconnect();

@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: 218 32% 15%;
+  --canvas: 210 25% 97%;
+  --panel: 0 0% 100%;
+  --line: 215 20% 83%;
+  --muted: 215 16% 40%;
+  --signal: 166 76% 27%;
+  --signal-foreground: 0 0% 100%;
+  --strong: 170 40% 13%;
+  --mint: 158 72% 76%;
+  --coral: 0 65% 43%;
+  --danger: 0 65% 43%;
+  --amber: 32 90% 33%;
+  --disabled: 214 20% 90%;
+  --disabled-foreground: 215 16% 40%;
+}
+
+.dark {
+  color-scheme: dark;
+  --ink: 210 25% 95%;
+  --canvas: 220 28% 9%;
+  --panel: 219 23% 13%;
+  --line: 216 18% 27%;
+  --muted: 215 16% 70%;
+  --signal: 158 66% 69%;
+  --signal-foreground: 170 45% 10%;
+  --strong: 170 35% 14%;
+  --mint: 158 72% 76%;
+  --coral: 4 90% 76%;
+  --danger: 0 65% 43%;
+  --amber: 40 95% 70%;
+  --disabled: 218 20% 22%;
+  --disabled-foreground: 215 16% 70%;
+}
+
+* { border-color: hsl(var(--line)); }
+html { background: hsl(var(--canvas)); }
+body { min-height: 100vh; background: hsl(var(--canvas)); color: hsl(var(--ink)); font-family: Arial, Helvetica, sans-serif; }
+button, input, textarea, select { font: inherit; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), [role="button"] { cursor: pointer; }
+input, textarea, select { accent-color: hsl(var(--signal)); }
+select option { background: hsl(var(--panel)); color: hsl(var(--ink)); }
+:where(a, button, input, textarea, select):focus-visible { outline: 2px solid hsl(var(--signal)); outline-offset: 3px; }
+input:disabled, textarea:disabled, select:disabled { cursor: not-allowed; background: hsl(var(--disabled)); color: hsl(var(--disabled-foreground)); }
+::selection { background: hsl(var(--signal) / 0.35); }
+
+.signal-grid {
+  background-image: linear-gradient(hsl(var(--line) / 0.38) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--line) / 0.38) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+.signal-line { position: relative; }
+.signal-line::before { content: ""; position: absolute; left: 0; top: -10px; height: 2px; width: 32px; background: hsl(var(--signal)); border-radius: 999px; }
+
+@keyframes pulse-signal { 0%, 100% { opacity: .45; transform: scale(.9); } 50% { opacity: 1; transform: scale(1); } }
+.signal-dot { animation: pulse-signal 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

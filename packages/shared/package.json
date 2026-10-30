@@ -1,0 +1,50 @@
+{
+  "name": "@mailpilot/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./src/db.ts",
+    "./database-errors": "./src/database-errors.ts",
+    "./auth": "./src/auth.ts",
+    "./demo": "./src/demo.ts",
+    "./crypto": "./src/crypto.ts",
+    "./logger": "./src/logger.ts",
+    "./ai": "./src/ai.ts",
+    "./queue": "./src/queue.ts",
+    "./mail": "./src/mail.ts",
+    "./email-content": "./src/email-content.ts",
+    "./sending-policy": "./src/sending-policy.ts",
+    "./recommendations": "./src/recommendations.ts",
+    "./prompts": "./src/prompts.ts",
+    "./campaign-ai": "./src/campaign-ai.ts",
+    "./inbox": "./src/inbox.ts",
+    "./reply-ai": "./src/reply-ai.ts",
+    "./compliance": "./src/compliance.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema ../../prisma/schema.prisma",
+    "prisma:deploy": "prisma migrate deploy --schema ../../prisma/schema.prisma",
+    "prisma:push": "prisma db push --schema ../../prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema ../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "bullmq": "^5.52.2",
+    "ioredis": "^5.6.1",
+    "imapflow": "^1.0.181",
+    "jose": "^6.0.10",
+    "mailparser": "^3.7.4",
+    "nodemailer": "^10.1.7",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/nodemailer": "^6.4.17",
+    "prisma": "^6.7.0",
+    "typescript": "^5.8.3"
+  }
+}

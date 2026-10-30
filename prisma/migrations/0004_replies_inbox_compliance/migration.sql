@@ -1,0 +1,12 @@
+CREATE TYPE "CampaignReplyMode" AS ENUM ('APPROVAL', 'AUTO');
+CREATE TYPE "NotificationType" AS ENUM ('INTERESTED_LEAD', 'CONFIRMED_DEAL', 'NEEDS_ATTENTION', 'BOUNCE_ALERT');
+ALTER TYPE "ReplyClassification" ADD VALUE IF NOT EXISTS 'ASKING_PRICE';
+ALTER TYPE "ReplyClassification" ADD VALUE IF NOT EXISTS 'ASKING_DETAILS';
+ALTER TABLE "Mailbox" ADD COLUMN "imapLastUid" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Campaign" ADD COLUMN "replyMode" "CampaignReplyMode" NOT NULL DEFAULT 'APPROVAL', ADD COLUMN "bounceRateThreshold" INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE "Thread" ADD COLUMN "needsAttention" BOOLEAN NOT NULL DEFAULT false, ADD COLUMN "manualReplyAt" TIMESTAMP(3), ADD COLUMN "tags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "Reply" ADD COLUMN "aiConfidence" DOUBLE PRECISION, ADD COLUMN "needsAttention" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "KnowledgeBase" ADD COLUMN "aboutMe" TEXT NOT NULL DEFAULT '', ADD COLUMN "services" TEXT NOT NULL DEFAULT '', ADD COLUMN "pastWork" TEXT NOT NULL DEFAULT '', ADD COLUMN "faqs" TEXT NOT NULL DEFAULT '', ADD COLUMN "pricingMin" DECIMAL(12,2), ADD COLUMN "pricingMax" DECIMAL(12,2), ADD COLUMN "packages" TEXT NOT NULL DEFAULT '', ADD COLUMN "allowedDiscount" TEXT NOT NULL DEFAULT '', ADD COLUMN "timelines" TEXT NOT NULL DEFAULT '', ADD COLUMN "paymentTerms" TEXT NOT NULL DEFAULT '';
+CREATE TABLE "Notification" ("id" TEXT NOT NULL, "workspaceId" TEXT NOT NULL, "type" "NotificationType" NOT NULL, "title" TEXT NOT NULL, "body" TEXT NOT NULL, "entityType" TEXT, "entityId" TEXT, "readAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Notification_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "Notification_workspaceId_readAt_createdAt_idx" ON "Notification"("workspaceId", "readAt", "createdAt");
+ALTER TABLE "Notification" ADD CONSTRAINT "Notification_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
