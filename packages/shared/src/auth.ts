@@ -13,6 +13,7 @@ export type SessionUser = {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  emailVerifiedAt: Date | null;
 };
 
 export type AuthContext = {
@@ -69,7 +70,7 @@ async function loadAuthContext(hash: string): Promise<AuthContext | null> {
     where: { tokenHash: hash },
     include: {
       user: {
-        select: { id: true, email: true, name: true, avatarUrl: true, memberships: {
+        select: { id: true, email: true, name: true, avatarUrl: true, emailVerifiedAt: true, memberships: {
           include: { workspace: { select: { id: true, name: true, slug: true, ownerId: true } } },
           orderBy: { createdAt: "asc" },
           take: 1

@@ -1,12 +1,9 @@
 import { prisma } from "@mailpilot/shared/db";
-import { decryptSecret } from "@mailpilot/shared/crypto";
 import { fetchNewInboundMessages, analyzeReply, extractReplyText, draftKnowledgeBaseReply, type ParsedInboundMessage } from "@mailpilot/shared";
 import { getOutreachQueue } from "@mailpilot/shared/queue";
-
-function credentials(mailbox: { smtpHost: string | null; smtpPort: number | null; smtpSecure: boolean; smtpUsername: string | null; smtpPasswordEncrypted: string | null; imapHost: string | null; imapPort: number | null; imapSecure: boolean; imapUsername: string | null; imapPasswordEncrypted: string | null }) {
-  if (!mailbox.imapHost || !mailbox.imapPort || !mailbox.imapUsername || !mailbox.imapPasswordEncrypted) throw new Error("Mailbox IMAP credentials are incomplete");
-  return { smtpHost: mailbox.smtpHost ?? "", smtpPort: mailbox.smtpPort ?? 587, smtpSecure: mailbox.smtpSecure, smtpUsername: mailbox.smtpUsername ?? "", smtpPassword: mailbox.smtpPasswordEncrypted ? decryptSecret(mailbox.smtpPasswordEncrypted) : "", imapHost: mailbox.imapHost, imapPort: mailbox.imapPort, imapSecure: mailbox.imapSecure, imapUsername: mailbox.imapUsername, imapPassword: decryptSecret(mailbox.imapPasswordEncrypted) };
-}
+import { acquireLock, releaseLock } from "@mailpilot/shared/redis";
+import { getMailboxCredentials } from "@mailpilot/shared/mailbox-credentials";
+import { logger } from "@mailpilot/shared/logger";
 
 async function cancelContactJobs(workspaceId: string, contactId: string) {
   const jobs = await getOutreachQueue().getJobs(["waiting", "delayed", "paused"], 0, -1);
@@ -21,11 +18,33 @@ function matchingMessage(message: ParsedInboundMessage, outbound: Array<{ id: st
 export async function processMailboxReplies(mailboxId: string) {
   const mailbox = await prisma.mailbox.findUnique({ where: { id: mailboxId }, include: { workspace: true } });
   if (!mailbox || !mailbox.isActive) return { imported: 0 };
-  const result = await fetchNewInboundMessages(credentials(mailbox), mailbox.imapLastUid);
+  // Distributed lock: with several workers, only one may sync a mailbox at a
+  // time. Without Redis this falls back to running (single-worker behaviour).
+  const lockKey = `mailpilot:imap-lock:${mailbox.id}`;
+  const locked = await acquireLock(lockKey, 120_000);
+  if (!locked) return { imported: 0, skipped: true };
+  try {
+    return await processMailboxRepliesLocked(mailbox);
+  } finally {
+    await releaseLock(lockKey);
+  }
+}
+
+async function processMailboxRepliesLocked(mailbox: NonNullable<Awaited<ReturnType<typeof prisma.mailbox.findUnique>>>) {
+  let result = await fetchNewInboundMessages(await getMailboxCredentials(mailbox), mailbox.imapLastUid, mailbox.imapUidValidity);
+  if (result.uidValidityChanged) {
+    // UIDVALIDITY changed: old UIDs are meaningless. Reset the cursor and
+    // re-fetch from the start under the new validity. New inbound ids embed
+    // the validity, so a message re-fetched under a colliding UID cannot be
+    // mistaken for the old, different message with that UID.
+    logger.warn("imap_uidvalidity_reset", { mailboxId: mailbox.id, newUidValidity: result.uidValidity });
+    await prisma.mailbox.update({ where: { id: mailbox.id }, data: { imapLastUid: 0, imapUidValidity: result.uidValidity } });
+    result = await fetchNewInboundMessages(await getMailboxCredentials(mailbox), 0, result.uidValidity);
+  }
   let imported = 0;
   for (const message of result.messages) {
     if (!message.fromEmail || message.fromEmail === mailbox.email.toLowerCase()) continue;
-    const inboundId = `inbound-${mailbox.id}-${message.uid}`;
+    const inboundId = `inbound-${mailbox.id}-${result.uidValidity ?? "unknown"}-${message.uid}`;
     if (await prisma.reply.findFirst({ where: { emailMessageId: inboundId }, select: { id: true } })) continue;
     const outbound = await prisma.emailMessage.findMany({ where: { workspaceId: mailbox.workspaceId, OR: [{ messageId: { in: [message.inReplyTo ?? "", ...message.references] } }, { toEmail: message.fromEmail }], direction: "OUTBOUND" }, select: { id: true, messageId: true, contactId: true, campaignId: true, threadId: true }, orderBy: { createdAt: "desc" }, take: 10 });
     const matched = matchingMessage(message, outbound) ?? outbound[0] ?? null;
@@ -57,13 +76,13 @@ export async function processMailboxReplies(mailboxId: string) {
     await prisma.thread.update({ where: { id: thread.id }, data: { snippet: message.text.slice(0, 180), lastMessageAt: message.receivedAt, needsAttention, tags: needsAttention ? ["needs attention"] : undefined } });
     imported += 1;
   }
-  await prisma.mailbox.update({ where: { id: mailbox.id }, data: { imapLastUid: result.lastUid, lastSyncedAt: new Date() } });
+  await prisma.mailbox.update({ where: { id: mailbox.id }, data: { imapLastUid: result.lastUid, imapUidValidity: result.uidValidity, lastSyncedAt: new Date() } });
   return { imported };
 }
 
 export async function syncAllMailboxes() {
-  const mailboxes = await prisma.mailbox.findMany({ where: { isActive: true, imapHost: { not: null }, imapPasswordEncrypted: { not: null } }, select: { id: true } });
+  const mailboxes = await prisma.mailbox.findMany({ where: { isActive: true, OR: [{ imapPasswordEncrypted: { not: null } }, { oauthRefreshTokenEncrypted: { not: null } }] }, select: { id: true } });
   let imported = 0;
-  for (const mailbox of mailboxes) { try { imported += (await processMailboxReplies(mailbox.id)).imported; } catch { /* mailbox health is handled by the next test/sync */ } }
+  for (const mailbox of mailboxes) { try { imported += (await processMailboxReplies(mailbox.id)).imported; } catch (error) { logger.warn("imap_sync_mailbox_failed", { mailboxId: mailbox.id, error: error instanceof Error ? error.message : "unknown" }); } }
   return imported;
 }

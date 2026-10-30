@@ -21,7 +21,15 @@
     "./campaign-ai": "./src/campaign-ai.ts",
     "./inbox": "./src/inbox.ts",
     "./reply-ai": "./src/reply-ai.ts",
-    "./compliance": "./src/compliance.ts"
+    "./compliance": "./src/compliance.ts",
+    "./redis": "./src/redis.ts",
+    "./rate-limit": "./src/rate-limit.ts",
+    "./auth-tokens": "./src/auth-tokens.ts",
+    "./billing": "./src/billing.ts",
+    "./billing-plans": "./src/billing-plans.ts",
+    "./token-pairs": "./src/token-pairs.ts",
+    "./oauth-mail": "./src/oauth-mail.ts",
+    "./mailbox-credentials": "./src/mailbox-credentials.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

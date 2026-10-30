@@ -5,12 +5,18 @@ import { resolveMailServer } from "./mail-network";
 
 async function smtpTransport(credentials: MailboxCredentials) {
   const server = await resolveMailServer(credentials.smtpHost);
-  return nodemailer.createTransport({ host: server.address, tls: { servername: server.servername }, port: credentials.smtpPort, secure: credentials.smtpSecure, requireTLS: !credentials.smtpSecure, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000, auth: { user: credentials.smtpUsername, pass: credentials.smtpPassword } });
+  const auth = credentials.oauthAccessToken
+    ? { type: "OAuth2" as const, user: credentials.smtpUsername, accessToken: credentials.oauthAccessToken }
+    : { user: credentials.smtpUsername, pass: credentials.smtpPassword };
+  return nodemailer.createTransport({ host: server.address, tls: { servername: server.servername }, port: credentials.smtpPort, secure: credentials.smtpSecure, requireTLS: !credentials.smtpSecure, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000, auth });
 }
 
 export async function createImapClient(credentials: MailboxCredentials) {
   const server = await resolveMailServer(credentials.imapHost);
-  return new ImapFlow({ logger: false, connectionTimeout: 15_000, socketTimeout: 30_000, host: server.address, tls: { servername: server.servername }, port: credentials.imapPort, secure: credentials.imapSecure, doSTARTTLS: !credentials.imapSecure, auth: { user: credentials.imapUsername, pass: credentials.imapPassword } });
+  const auth = credentials.oauthAccessToken
+    ? { user: credentials.imapUsername, accessToken: credentials.oauthAccessToken }
+    : { user: credentials.imapUsername, pass: credentials.imapPassword };
+  return new ImapFlow({ logger: false, connectionTimeout: 15_000, socketTimeout: 30_000, host: server.address, tls: { servername: server.servername }, port: credentials.imapPort, secure: credentials.imapSecure, doSTARTTLS: !credentials.imapSecure, auth });
 }
 
 export function createSmtpProvider(credentials: MailboxCredentials): OutboundMailProvider {

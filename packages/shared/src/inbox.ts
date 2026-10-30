@@ -15,13 +15,22 @@ export type ParsedInboundMessage = {
   receivedAt: Date;
 };
 
-export async function fetchNewInboundMessages(credentials: MailboxCredentials, lastUid: number): Promise<{ messages: ParsedInboundMessage[]; lastUid: number }> {
+export async function fetchNewInboundMessages(credentials: MailboxCredentials, lastUid: number, expectedUidValidity?: string | null): Promise<{ messages: ParsedInboundMessage[]; lastUid: number; uidValidity: string | null; uidValidityChanged: boolean }> {
   const client = await createImapClient(credentials);
   const messages: ParsedInboundMessage[] = [];
   await client.connect();
   const lock = await client.getMailboxLock("INBOX");
   let newestUid = lastUid;
+  let selectedUidValidity: string | null = null;
   try {
+    const currentUidValidity = client.mailbox ? client.mailbox.uidValidity.toString() : null;
+    selectedUidValidity = currentUidValidity;
+    if (expectedUidValidity && currentUidValidity && expectedUidValidity !== currentUidValidity) {
+      // RFC 3501: UIDVALIDITY changed, so every UID from before is invalid.
+      // The caller must reset its cursor to 0 and re-fetch; returning no
+      // messages here prevents old UIDs from being silently skipped.
+      return { messages: [], lastUid: 0, uidValidity: currentUidValidity, uidValidityChanged: true };
+    }
     for await (const message of client.fetch({ uid: `${lastUid + 1}:*` }, { uid: true, source: true, internalDate: true }, { uid: true })) {
       // IMAP's n:* can include the last message even when n exceeds the last UID.
       if (message.uid <= lastUid) continue;
@@ -38,5 +47,5 @@ export async function fetchNewInboundMessages(credentials: MailboxCredentials, l
     lock.release();
     if (client.usable) await client.logout();
   }
-  return { messages, lastUid: newestUid };
+  return { messages, lastUid: newestUid, uidValidity: selectedUidValidity, uidValidityChanged: false };
 }
