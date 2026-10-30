@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 import { UnrecoverableError } from "bullmq";
 import { prisma } from "@mailpilot/shared/db";
-import { decryptSecret } from "@mailpilot/shared/crypto";
 import { createSmtpProvider } from "@mailpilot/shared/mail";
 import { generatePersonalizedEmail, generateFollowUpEmail } from "@mailpilot/shared/campaign-ai";
 import { getOutreachQueue } from "@mailpilot/shared/queue";
 import { complianceFooter } from "@mailpilot/shared/compliance";
 import { renderTemplate, textToHtml } from "@mailpilot/shared/email-content";
 import { mailboxSendLimit, sendingWindowDelay, STOP_CONTACT_STATUSES } from "@mailpilot/shared/sending-policy";
+import { checkAiUsageLimit, checkMonthlySendLimit, PlanLimitError, recordAiUsage } from "@mailpilot/shared/billing";
+import { configuredProviderName, isAiConfigured } from "@mailpilot/shared/ai";
+import { getMailboxCredentials, mailboxHasUsableCredentials } from "@mailpilot/shared/mailbox-credentials";
 
 export type SendData = { campaignId: string; contactId: string; workspaceId: string; stepId?: string };
 const defer = (delay: number, reason: string) => ({ rescheduled: true, delay, reason });
@@ -74,7 +76,7 @@ export async function processOutreachSend(data: SendData) {
   const since = new Date(Date.now() - 86_400_000);
   const campaignCount = await prisma.emailMessage.count({ where: { campaignId: campaign.id, direction: "OUTBOUND", createdAt: { gte: since } } });
   if (campaignCount >= campaign.dailySendLimit) return defer(3_600_000, "campaign_daily_limit");
-  const candidates = campaign.mailboxes.map((link) => link.mailbox).filter((mailbox) => mailbox.workspaceId === data.workspaceId && mailbox.isActive && mailbox.healthStatus === "CONNECTED");
+  const candidates = campaign.mailboxes.map((link) => link.mailbox).filter((mailbox) => mailbox.workspaceId === data.workspaceId && mailbox.isActive && mailbox.healthStatus === "CONNECTED" && mailboxHasUsableCredentials(mailbox));
   if (!candidates.length) throw new Error("No connected sending mailbox is available");
   // Counts include uncertain delivery reservations. Quotas use a rolling 24h window.
   let mailbox: typeof candidates[number] | undefined;
@@ -92,19 +94,30 @@ export async function processOutreachSend(data: SendData) {
     mailbox = candidate; break;
   }
   if (!mailbox) return defer(Math.max(1000, smallestDelay), "mailbox_limit_or_spacing");
-  if (!mailbox.smtpHost || !mailbox.smtpPort || !mailbox.smtpUsername || !mailbox.smtpPasswordEncrypted) throw new Error("Mailbox credentials are incomplete");
+  try { await checkMonthlySendLimit(data.workspaceId); } catch (error) { if (error instanceof PlanLimitError) return defer(3_600_000, "plan_monthly_send_limit"); throw error; }
 
+  const needsAiDraft = step.position === 0
+    ? !(step.subject && step.templateBody) && !(recipient.generatedSubject && recipient.generatedText)
+    : true;
+  if (needsAiDraft && isAiConfigured()) {
+    try { await checkAiUsageLimit(data.workspaceId); } catch (error) { if (error instanceof PlanLimitError) return defer(3_600_000, "plan_ai_limit"); throw error; }
+  }
   let draft: { subject: string; text: string };
   if (step.position === 0) {
     if (step.subject && step.templateBody) draft = { subject: renderTemplate(step.subject, contact), text: renderTemplate(step.templateBody, contact) };
     else if (recipient.generatedSubject && recipient.generatedText) draft = { subject: recipient.generatedSubject, text: recipient.generatedText };
-    else draft = await generatePersonalizedEmail({ firstName: contact.firstName, company: contact.company, website: contact.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+    else {
+      const generated = await generatePersonalizedEmail({ firstName: contact.firstName, company: contact.company, website: contact.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+      if (generated.provider !== "local") await recordAiUsage(data.workspaceId, generated.provider, generated.model);
+      draft = generated;
+    }
   } else {
     draft = await generateFollowUpEmail({ firstName: contact.firstName, company: contact.company, previousSubject: prior?.subject, previousText: prior?.bodyText, instruction: step.templateBody, businessDescription: campaign.businessDescription, services: campaign.services, signature: campaign.signature });
+    if (isAiConfigured()) await recordAiUsage(data.workspaceId, configuredProviderName());
   }
   if (!draft.subject.trim() || draft.subject.length > 200 || /[\r\n]/.test(draft.subject) || !draft.text.trim() || draft.text.length > 6000) throw new Error("Invalid email content");
   const html = textToHtml(draft.text);
-  const credentials = { smtpHost: mailbox.smtpHost, smtpPort: mailbox.smtpPort, smtpSecure: mailbox.smtpSecure, smtpUsername: mailbox.smtpUsername, smtpPassword: decryptSecret(mailbox.smtpPasswordEncrypted), imapHost: "", imapPort: 993, imapSecure: true, imapUsername: "", imapPassword: "" };
+  const credentials = await getMailboxCredentials(mailbox);
   const footer = complianceFooter({ workspaceId: data.workspaceId, businessName: mailbox.fromName, address: mailbox.businessAddress, email: contact.email });
   // AI generation may take time: check current state again immediately before SMTP.
   const [currentCampaign, currentContact, currentMailbox] = await Promise.all([

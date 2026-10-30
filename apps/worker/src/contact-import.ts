@@ -1,5 +1,6 @@
 import { prisma } from "@mailpilot/shared/db";
 import { logger } from "@mailpilot/shared/logger";
+import { checkContactLimit, PlanLimitError } from "@mailpilot/shared/billing";
 
 type ImportRow = Record<string, string>;
 type ContactMapping = { name?: string; email?: string; company?: string; website?: string; customFields?: string[]; tags?: string };
@@ -14,6 +15,7 @@ export async function processContactImport(data: ContactImportData) {
   const job = await prisma.importJob.findFirst({ where: { id: importJobId, workspaceId } });
   if (!job || job.status === "COMPLETED") return { skipped: true };
   if (listId && !await prisma.contactList.findFirst({ where: { id: listId, workspaceId }, select: { id: true } })) throw new Error("Import list is unavailable");
+  try { await checkContactLimit(workspaceId, rows.length); } catch (error) { if (error instanceof PlanLimitError) { await prisma.importJob.update({ where: { id: importJobId }, data: { status: "FAILED", error: error.message } }); return { skipped: true, reason: "plan_contact_limit" }; } throw error; }
   await prisma.importJob.update({ where: { id: importJobId }, data: { status: "PROCESSING" } });
   const normalized: Array<{ email: string; firstName: string | null; lastName: string | null; company: string | null; website: string | null; customFields: Record<string, string> | undefined; tags: string[] }> = [];
   let invalid = 0;

@@ -11,7 +11,7 @@ export function middleware(request: NextRequest) {
       return NextResponse.json({ error: "Cross-site request rejected" }, { status: 403 });
     }
   }
-  const protectedRoute = ["/dashboard", "/campaigns", "/contacts", "/inbox", "/mailboxes", "/knowledge-base", "/analytics", "/settings"].some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const protectedRoute = ["/dashboard", "/campaigns", "/contacts", "/inbox", "/mailboxes", "/knowledge-base", "/analytics", "/settings", "/billing"].some((route) => pathname === route || pathname.startsWith(`${route}/`));
   if (protectedRoute && !request.cookies.has(SESSION_COOKIE_NAME)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("returnTo", pathname);
@@ -20,4 +20,4 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/api/:path*", "/dashboard/:path*", "/campaigns/:path*", "/contacts/:path*", "/inbox/:path*", "/mailboxes/:path*", "/knowledge-base/:path*", "/analytics/:path*", "/settings/:path*"] };
+export const config = { matcher: ["/api/:path*", "/dashboard/:path*", "/campaigns/:path*", "/contacts/:path*", "/inbox/:path*", "/mailboxes/:path*", "/knowledge-base/:path*", "/analytics/:path*", "/settings/:path*", "/billing/:path*"] };

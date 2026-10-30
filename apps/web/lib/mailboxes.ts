@@ -17,6 +17,7 @@ type MailboxRecord = {
   imapSecure: boolean;
   imapUsername: string | null;
   imapPasswordEncrypted: string | null;
+  oauthRefreshTokenEncrypted: string | null;
   fromName: string | null;
   signature: string | null;
   businessAddress: string | null;
@@ -84,6 +85,7 @@ export function safeMailbox(mailbox: MailboxRecord) {
     warmupStartPerDay: mailbox.warmupStartPerDay,
     warmupRampPerDay: mailbox.warmupRampPerDay,
     warmupDay: mailbox.warmupDay,
+    oauthConnected: Boolean(mailbox.oauthRefreshTokenEncrypted),
     healthStatus: mailbox.healthStatus,
     healthError: mailbox.healthError,
     lastTestedAt: mailbox.lastTestedAt,
