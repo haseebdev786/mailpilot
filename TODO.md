@@ -15,6 +15,19 @@
 - [x] Support Approval and Auto campaign reply modes with guarded auto-reply queueing.
 - [x] Track deals, qualify interested leads, support deal stages, and notify on confirmed wins.
 
+## Phase 8 — Public paid SaaS launch (implemented in code 2026-10-30, migration 0005_saas_launch; live acceptance still required)
+
+- [x] Stripe billing: Free/Pro/Scale plans, checkout, customer portal, webhook signature verification and subscription updates, and server-enforced plan limits on mailboxes, contacts, active campaigns, monthly sends and AI usage (API routes and worker).
+- [x] Email verification and password reset with signed, expiring, single-use tokens; optional hard verification gate via EMAIL_VERIFICATION_REQUIRED.
+- [x] Gmail and Outlook OAuth mailbox connection with encrypted, refreshed tokens (XOAUTH2 SMTP/IMAP); SMTP/IMAP remains the fallback.
+- [x] Distributed Redis rate limits for auth and AI calls, with in-memory fallback when Redis is unavailable.
+- [x] Operational monitoring: /api/health (DB/Redis/queue/worker heartbeat), /api/ready, worker heartbeat, and FailedJob dead-letter visibility with owner resolve/retry.
+- [x] IMAP UIDVALIDITY reset handling and a per-mailbox distributed sync lock for multiple workers.
+- [x] Replaced decorative shell controls/status badges with measured status or removed them.
+- [ ] Live acceptance with real keys: Stripe test checkout + webhook + portal; real Gmail/Outlook OAuth send/receive; Redis-backed delivery, imports, follow-ups and reply sync across two workers; UIDVALIDITY reset on a real mailbox.
+- [ ] Re-run npm audit on a normal network and resolve the remaining development-tool findings from the October review.
+- [ ] Apply migration 0005 to the hosted database and deploy (see README "Before a public paid SaaS launch").
+
 ## Phase 7 — Compliance and analytics
 
 - [x] Add unsubscribe footer, public unsubscribe page, global suppression, auto-honor opt-out replies, List-Unsubscribe, and one-click header.

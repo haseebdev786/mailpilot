@@ -2,6 +2,14 @@
 
 Reviewed: 22 October 2026.
 
+## Addendum — SaaS launch work, 30 October 2026 (code only, uncommitted, not deployed)
+
+The gaps listed under “Before public paid SaaS launch” in the October review were implemented in code in `~/workspace/mailpilot` as uncommitted local changes (migration `0005_saas_launch`): Stripe billing with server-enforced entitlements, email verification/password reset, Gmail/Outlook OAuth mailboxes, Redis rate limits with fallback, health/readiness monitoring, FailedJob dead-letter visibility, IMAP UIDVALIDITY reset handling, and removal/replacement of decorative shell controls. See README “SaaS launch features” for the exact routes and behaviour.
+
+Verification in this sandbox: `npm test` 22 passed / 1 failed (the 1 failure is a pre-existing session test that needs a generated Prisma client); `npm run lint` passes; `npm run typecheck` and `npm run build` compile but fail at the type-check stage for the same reason — `prisma generate` cannot download its engine in this sandbox (network resets on the engine download), so no generated Prisma client exists here at all. That is an environment blocker, not a code regression: on a machine where `npm run db:generate` succeeds, re-run typecheck/build and the integration suite. No migration was run against a hosted database, no real email was sent, and nothing was pushed to GitHub.
+
+Still blocked before a live launch: real Stripe keys/webhook secret and price ids, real Google/Microsoft OAuth credentials, a transactional mail sender for verification/reset, a public HTTPS APP_URL, and live provider acceptance tests (Stripe checkout/webhook/portal, Gmail/Outlook send/receive, two-worker reply sync, UIDVALIDITY reset). The development-tool audit findings were not re-audited because the sandbox registry policy blocks `npm audit`.
+
 The core personal outreach workflow is implemented and tested locally. This is not yet a production acceptance sign-off for a public paid SaaS.
 
 ## What now works

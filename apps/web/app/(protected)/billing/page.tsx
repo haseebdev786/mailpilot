@@ -1,0 +1,2 @@
+import { BillingManager } from "@/components/billing-manager";
+export default function BillingPage() { return <div className="space-y-8"><div><p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">Workspace / billing</p><h1 className="mt-3 text-4xl font-bold tracking-[-0.06em]">Billing</h1><p className="mt-3 text-sm text-muted">Your plan, usage and Stripe checkout live here. Limits are enforced on the server, not just in the UI.</p></div><BillingManager /></div>; }
