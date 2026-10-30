@@ -1,6 +1,7 @@
 import { withDatabaseErrors } from "@/lib/database-response";
 import { NextResponse } from "next/server";
 import { prisma } from "@mailpilot/shared/db";
+import { checkContactLimit, PlanLimitError } from "@mailpilot/shared/billing";
 import { getCurrentAuth } from "@/lib/auth";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -33,6 +34,7 @@ export const POST = withDatabaseErrors(async (request: Request) => {
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     const body = parsed.data;
     if (body.listId && !await prisma.contactList.findFirst({ where: { id: body.listId, workspaceId: auth.workspace.id }, select: { id: true } })) return NextResponse.json({ error: "Contact list not found" }, { status: 404 });
+    try { await checkContactLimit(auth.workspace.id); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
     const email = body.email?.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "A valid email is required" }, { status: 400 });
     const parts = body.name?.trim().split(/\s+/) ?? [];

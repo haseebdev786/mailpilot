@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@mailpilot/shared/db";
 import { getOutreachQueue } from "@mailpilot/shared/queue";
+import { checkContactLimit, PlanLimitError } from "@mailpilot/shared/billing";
 import { getCurrentAuth } from "@/lib/auth";
 import { parseSpreadsheet, type ContactMapping } from "@/lib/contact-import";
 
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   if (listId) { const list = await prisma.contactList.findFirst({ where: { id: listId, workspaceId: auth.workspace.id } }); if (!list) return NextResponse.json({ error: "Contact list not found" }, { status: 404 }); }
   try {
     const parsed = await parseSpreadsheet(file);
+    try { await checkContactLimit(auth.workspace.id, parsed.rows.length); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
     if (typeof mapping.email !== "string" || !parsed.headers.includes(mapping.email)) return NextResponse.json({ error: "Map the email column before importing" }, { status: 400 });
     const queue = getOutreachQueue();
     try { await queue.getJobCounts("waiting"); } catch { return NextResponse.json({ error: "Import queue unavailable. Start Redis and the worker, then try again." }, { status: 503 }); }

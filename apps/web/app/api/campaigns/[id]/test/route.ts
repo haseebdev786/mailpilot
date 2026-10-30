@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createSmtpProvider } from "@mailpilot/shared/mail";
 import { generatePersonalizedEmail } from "@mailpilot/shared/campaign-ai";
-import { decryptSecret } from "@mailpilot/shared/crypto";
 import { prisma } from "@mailpilot/shared/db";
+import { checkAiUsageLimit, PlanLimitError, recordAiUsage } from "@mailpilot/shared/billing";
+import { isAiConfigured } from "@mailpilot/shared/ai";
+import { getMailboxCredentials, mailboxHasUsableCredentials } from "@mailpilot/shared/mailbox-credentials";
 import { getCurrentAuth } from "@/lib/auth";
 import { messageIdFor } from "@/lib/campaigns";
 import { renderTemplate, textToHtml } from "@mailpilot/shared/email-content";
@@ -26,12 +28,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const template = campaign.steps[0];
     const subject = body.subject || (template?.subject ? renderTemplate(template.subject, recipient) : "");
     const text = body.text || (template?.subject ? renderTemplate(template.templateBody ?? "", recipient) : "");
-    const draft = subject && text ? { subject, text, html: textToHtml(text) } : await generatePersonalizedEmail({ firstName: recipient.firstName, company: recipient.company, website: recipient.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+    let draft;
+    if (subject && text) {
+      draft = { subject, text, html: textToHtml(text) };
+    } else {
+      if (isAiConfigured()) {
+        try { await checkAiUsageLimit(auth.workspace.id); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
+      }
+      draft = await generatePersonalizedEmail({ firstName: recipient.firstName, company: recipient.company, website: recipient.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+      if (draft.provider !== "local") await recordAiUsage(auth.workspace.id, draft.provider, draft.model);
+    }
     const mailbox = campaign.mailboxes[0].mailbox;
     if (!mailbox.isActive || mailbox.healthStatus !== "CONNECTED") throw new Error("Connect and test the sending mailbox first");
-    if (!mailbox.smtpHost || !mailbox.smtpPort || !mailbox.smtpUsername || !mailbox.smtpPasswordEncrypted) throw new Error("Sending mailbox credentials are incomplete");
+    if (!mailboxHasUsableCredentials(mailbox)) throw new Error("Sending mailbox credentials are incomplete");
     const messageId = messageIdFor(new URL(process.env.APP_URL ?? "http://localhost:3000").hostname, crypto.randomUUID());
-    await createSmtpProvider({ smtpHost: mailbox.smtpHost, smtpPort: mailbox.smtpPort, smtpSecure: mailbox.smtpSecure, smtpUsername: mailbox.smtpUsername, smtpPassword: decryptSecret(mailbox.smtpPasswordEncrypted), imapHost: mailbox.imapHost ?? "", imapPort: mailbox.imapPort ?? 993, imapSecure: mailbox.imapSecure, imapUsername: mailbox.imapUsername ?? "", imapPassword: mailbox.imapPasswordEncrypted ? decryptSecret(mailbox.imapPasswordEncrypted) : "" }).send({ from: mailbox.fromName ? `${mailbox.fromName} <${mailbox.email}>` : mailbox.email, to: body.testEmail, subject: `[Test] ${draft.subject}`, text: draft.text, html: draft.html, messageId });
+    await createSmtpProvider(await getMailboxCredentials(mailbox)).send({ from: mailbox.fromName ? `${mailbox.fromName} <${mailbox.email}>` : mailbox.email, to: body.testEmail, subject: `[Test] ${draft.subject}`, text: draft.text, html: draft.html, messageId });
     await prisma.emailMessage.create({ data: { workspaceId: auth.workspace.id, mailboxId: mailbox.id, campaignId: campaign.id, direction: "OUTBOUND", status: "SENT", messageId, fromEmail: mailbox.email, toEmail: body.testEmail, subject: `[Test] ${draft.subject}`, bodyText: draft.text, bodyHtml: draft.html, sentAt: new Date() } });
     return NextResponse.json({ ok: true, draft });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Test send failed" }, { status: 502 }); }

@@ -3,6 +3,7 @@ import { prisma } from "@mailpilot/shared/db";
 import { testMailboxConnection } from "@mailpilot/shared/mail";
 import { getCurrentAuth } from "@/lib/auth";
 import { credentialsFromMailbox, safeMailbox } from "@/lib/mailboxes";
+import { getMailboxCredentials } from "@mailpilot/shared/mailbox-credentials";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentAuth();
@@ -11,7 +12,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const mailbox = await prisma.mailbox.findFirst({ where: { id, workspaceId: auth.workspace.id } });
   if (!mailbox) return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
   try {
-    await testMailboxConnection(credentialsFromMailbox(mailbox));
+    const credentials = mailbox.oauthRefreshTokenEncrypted ? await getMailboxCredentials(mailbox) : credentialsFromMailbox(mailbox);
+    await testMailboxConnection(credentials);
     const updated = await prisma.mailbox.update({ where: { id }, data: { healthStatus: "CONNECTED", healthError: null, lastTestedAt: new Date() } });
     return NextResponse.json({ ok: true, mailbox: safeMailbox(updated) });
   } catch (error) {

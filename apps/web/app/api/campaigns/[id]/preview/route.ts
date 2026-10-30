@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { generatePersonalizedEmail } from "@mailpilot/shared/campaign-ai";
 import { prisma } from "@mailpilot/shared/db";
+import { checkAiUsageLimit, PlanLimitError, recordAiUsage } from "@mailpilot/shared/billing";
+import { isAiConfigured } from "@mailpilot/shared/ai";
 import { getCurrentAuth } from "@/lib/auth";
 import { renderTemplate, textToHtml } from "@mailpilot/shared/email-content";
 
@@ -18,7 +20,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const template = campaign.steps[0];
     const subject = template?.subject ? renderTemplate(template.subject, contact) : "";
     const text = subject ? renderTemplate(template.templateBody ?? "", contact) : "";
-    const draft = subject && text ? { subject, text, html: textToHtml(text), subjectVariants: [subject], provider: "template", model: "template" } : await generatePersonalizedEmail({ firstName: contact.firstName, company: contact.company, website: contact.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+    let draft;
+    if (subject && text) {
+      draft = { subject, text, html: textToHtml(text), subjectVariants: [subject], provider: "template", model: "template" };
+    } else {
+      if (isAiConfigured()) {
+        try { await checkAiUsageLimit(auth.workspace.id); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
+      }
+      draft = await generatePersonalizedEmail({ firstName: contact.firstName, company: contact.company, website: contact.website, businessDescription: campaign.businessDescription, services: campaign.services, offer: campaign.offer, tone: campaign.tone, cta: campaign.cta, signature: campaign.signature });
+      if (draft.provider !== "local") await recordAiUsage(auth.workspace.id, draft.provider, draft.model);
+    }
     await prisma.campaignContact.update({ where: { campaignId_contactId: { campaignId: id, contactId: contact.id } }, data: { generatedSubject: draft.subject, generatedText: draft.text, generatedHtml: draft.html, generatedAt: new Date(), lastError: null } });
     return NextResponse.json({ draft, contact: { id: contact.id, email: contact.email, firstName: contact.firstName, company: contact.company } });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to generate a draft" }, { status: 502 }); }
