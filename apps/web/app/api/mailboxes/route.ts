@@ -3,6 +3,7 @@ import { encryptSecret } from "@mailpilot/shared/crypto";
 import { prisma } from "@mailpilot/shared/db";
 import { logger } from "@mailpilot/shared/logger";
 import { testMailboxConnection } from "@mailpilot/shared/mail";
+import { checkMailboxLimit, PlanLimitError } from "@mailpilot/shared/billing";
 import { getCurrentAuth } from "@/lib/auth";
 import { mailboxCreateSchema, safeMailbox } from "@/lib/mailboxes";
 
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string, unknown>;
     const shouldTest = body.testConnection === true;
     const input = mailboxCreateSchema.parse(body);
+    try { await checkMailboxLimit(auth.workspace.id); } catch (error) { if (error instanceof PlanLimitError) return NextResponse.json({ error: error.message }, { status: 402 }); throw error; }
     const mailbox = await prisma.mailbox.create({ data: { workspaceId: auth.workspace.id, name: input.name, email: input.email.toLowerCase(), smtpHost: input.smtpHost, smtpPort: input.smtpPort, smtpSecure: input.smtpSecure, smtpUsername: input.smtpUsername, smtpPasswordEncrypted: encryptSecret(input.smtpPassword), imapHost: input.imapHost, imapPort: input.imapPort, imapSecure: input.imapSecure, imapUsername: input.imapUsername, imapPasswordEncrypted: encryptSecret(input.imapPassword), fromName: input.fromName || null, signature: input.signature || null, businessAddress: input.businessAddress || null, dailySendLimit: input.dailySendLimit, warmupEnabled: input.warmupEnabled, warmupStartPerDay: input.warmupStartPerDay, warmupRampPerDay: input.warmupRampPerDay } });
     if (!shouldTest) return NextResponse.json({ mailbox: safeMailbox(mailbox), test: null }, { status: 201 });
     try {

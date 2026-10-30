@@ -39,8 +39,9 @@ export function AuthForm({ initialError, demoEnabled = false, demoEmail, demoPas
     setError("");
     try {
       const response = await fetch(`/api/auth/${mode === "login" ? "login" : "signup"}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, email, password }) });
-      const data = await response.json() as { error?: string };
+      const data = await response.json() as { error?: string; requiresVerification?: boolean; sessionCreated?: boolean };
       if (!response.ok) throw new Error(data.error ?? "Something went wrong.");
+      if (mode === "signup" && data.requiresVerification && data.sessionCreated === false) { setError("Account created. Check your email for the verification link, then log in."); return; }
       router.push("/dashboard");
       router.refresh();
     } catch (reason) {
@@ -77,6 +78,7 @@ export function AuthForm({ initialError, demoEnabled = false, demoEmail, demoPas
     </div>}
     <div className="my-6 flex items-center gap-3"><div className="h-px flex-1 bg-line" /><span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">or continue with</span><div className="h-px flex-1 bg-line" /></div>
     <a href="/api/auth/google" className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line bg-panel text-sm font-semibold text-ink transition hover:border-signal/50 hover:shadow-glow"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-strong text-[10px] font-bold text-white">G</span> Google</a>
-    <p className="mt-7 text-center text-[11px] leading-5 text-muted">By continuing, you agree to keep your outreach respectful and permission-based.</p>
+    <p className="mt-4 text-center text-[11px] leading-5 text-muted"><a href="/forgot-password" className="underline">Forgot password?</a> · <a href="/verify-email" className="underline">Resend verification link</a></p>
+    <p className="mt-3 text-center text-[11px] leading-5 text-muted">By continuing, you agree to keep your outreach respectful and permission-based.</p>
   </div>;
 }
